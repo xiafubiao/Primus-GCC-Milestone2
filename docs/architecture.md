@@ -128,14 +128,10 @@ interface AttestationData {
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Important:** The zkVM receives **attestation_data** as input from the Dapp, **NOT** directly from the Attestor. The attestation_data contains:
-- **public_data**: hash/commitment, signature, attestation metadata
-- **private_data**: raw_data (plain_response), random (if commitment-based)
-
-This ensures:
-1. Dapp maintains control over data flow
-2. Attestor only interacts with Dapp (not zkVM)
-3. zkVM can independently verify attestation integrity using both public and private data
+**Key Points:**
+- **Attestor → Dapp**: Returns `attestation_data` (public + private)
+- **Dapp → zkVM**: Sends `attestation_data` to the zkVM program
+- **zkVM**: Verifies attestation integrity + executes business logic
 
 ## Attestation Types
 
