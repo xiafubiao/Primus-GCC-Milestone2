@@ -57,51 +57,86 @@ interface AttestationData {
 ### 3. Verification Flow
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│ Step 1: Receive Attestation                                  │
-│ - Input: EIP712 signed attestation from Primus Network       │
-│ - Output: Parsed attestation object                          │
-└──────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌──────────────────────────────────────────────────────────────┐
-│ Step 2: Verify Signature                                     │
-│ - Verify EIP712 signature (v, r, s)                          │
-│ - Verify attestor address matches task assignment            │
-│ - Verify schema and chain ID                                 │
-└──────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌──────────────────────────────────────────────────────────────┐
-│ Step 3: Extract Plain Response                               │
-│ - Decode `data` field from hex to JSON                       │
-│ - Extract request/response information                       │
-│ - Parse responseResolve paths                                │
-└──────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌──────────────────────────────────────────────────────────────┐
-│ Step 4: Prepare zkVM Inputs                                  │
-│ - Convert data to zkVM-friendly format                       │
-│ - Generate commitments or hashes based on attestation type   │
-│ - Prepare public inputs for circuit                          │
-└──────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌──────────────────────────────────────────────────────────────┐
-│ Step 5: Execute zkVM Verification                            │
-│ - Load appropriate zkVM adapter (Aztec/Succinct/Brevis)      │
-│ - Execute verification circuit                               │
-│ - Generate proof or verification result                      │
-└──────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌──────────────────────────────────────────────────────────────┐
-│ Step 6: Return Proof                                         │
-│ - Return zkVM proof to caller                                │
-│ - Include verification metadata                              │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Step 1: Dapp Submits Task to Primus Network                             │
+│ - Input: Task configuration (URL, headers, responseResolve, etc.)       │
+│ - Output: taskId, list of assigned attestors                            │
+└─────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Step 2: Dapp Performs zkTLS with Attestors                              │
+│ - Dapp → Attestor: Attestation request (taskId, request, etc.)          │
+│ - Attestor → Dapp: attestation_data                                     │
+│   {                                                                     │
+│     public_data: [                                                      │
+│       {                                                                 │
+│         attestation: { recipient, request, responseResolves, data... }, │
+│         signature: string                                               │
+│       }                                                                 │
+│     ],                                                                  │
+│     private_data: [                                                     │
+│       { random?: string[], content?: string[],                          │
+│         plain_json_response?: [...] }                                   │
+│     ]                                                                   │
+│   }                                                                     │
+└─────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Step 3: Dapp Extracts Plain Response (Local)                            │
+│ - Uses Primus SDK to decode attestation_data.private_data               │
+│ - Extracts plain_response without sending back to network               │
+│ - Prepares combined input for zkVM                                      │
+└─────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   │ Input to zkVM:
+                                   │ {
+                                   │   attestation_data,
+                                   │   plain_response,
+                                   │   allowed_urls
+                                   │ }
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Step 4: zkVM Verification Program (Inside TEE)                          │
+│ ┌─────────────────────────────────────────────────────────────────────┐ │
+│ │ 4a. Primus zkTLS Verification                                       │ │
+│ │     - Verify EIP712 signature (ECDSA secp256k1)                     │ │
+│ │     - Verify request_url matches one of allowed_urls                │ │
+│ │     - Verify response integrity:                                    │ │
+│ │       • Commitment-based: coms[i] == msgs_chunks[i]*G + rnds[i]*H   │ │
+│ │       • Hash-based: data_hashes[i] == sha256(response_content[i])   │ │
+│ │     - Extract JSON fields from response                             │ │
+│ └─────────────────────────────────────────────────────────────────────┘ │
+│                                    │                                    │
+│                                    ▼                                    │
+│ ┌─────────────────────────────────────────────────────────────────────┐ │
+│ │ 4b. Business Logic Program                                          │ │
+│ │     - Execute custom verification logic on extracted data           │ │
+│ │     - Example: Verify balance > 1000, status == "active", etc.      │ │
+│ │     - Generate proof / emit verification result                     │ │
+│ └─────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   │ Output from zkVM:
+                                   │ {
+                                   │   proof,
+                                   │   public_inputs,
+                                   │   verification_result
+                                   │ }
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Step 5: Return Proof to Dapp / Submit On-Chain                          │
+│ - Dapp receives zkVM proof                                              │
+│ - Optionally submit to on-chain verifier contract                       │
+│ - Verify proof and consume verification result                          │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
+
+**Important:** The zkVM receives **attestation_data + plain_response** as input from the Dapp, **NOT** directly from the Attestor. This ensures:
+1. Dapp maintains control over data flow
+2. Attestor only interacts with Dapp (not zkVM)
+3. zkVM can independently verify attestation integrity
 
 ## Attestation Types
 

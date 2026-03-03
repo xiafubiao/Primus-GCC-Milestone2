@@ -27,30 +27,64 @@ zkTLS × zkVM Integration - Primus Network GCC Milestone 2 Implementation
 ### DVC (Data Verification and Computation) Mode
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Dapp (Primus SDK)                      │
-└─────────────────────────────────────────────────────────────┘
-         │                              │
-         │ 1. Submit Task               │ 4. Send Attestation + Plain Response
-         ▼                              ▼
-┌─────────────────────────┐   ┌─────────────────────────────────────┐
-│    Primus Network       │   │    Verification Program (TEE+zkVM)  │
-│  ┌──────────────────┐   │   │  ┌──────────────────────────────┐   │
-│  │   Contract       │   │   │  │  Business Rust Program       │   │
-│  └──────────────────┘   │   │  └──────────────────────────────┘   │
-│  ┌──────────────────┐   │   │  ┌──────────────────────────────┐   │
-│  │  Attestor Nodes  │───┼──►│  │  Primus zkTLS Verification   │   │
-│  └──────────────────┘   │   │  └──────────────────────────────┘   │
-└─────────────────────────┘   └─────────────────────────────────────┘
-         │                              │
-         │ 2. Return Attestation        │ 5. Return Proof
-         │    (signature, txHash)       │
-         ▼                              ▼
-┌─────────────────────────┐   ┌─────────────────────────────────────┐
-│  3. Extract Plain       │   │           zkVM Platform             │
-│     Response (local)    │   │  (Aztec Noir / Succinct / Brevis)   │
-└─────────────────────────┘   └─────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Dapp (Primus SDK)                             │
+│                                                                         │
+│  1. Submit Task          3. Extract Plain Response (local)              │
+│     ┌─────────┐              ┌───────────────────────┐                  │
+│     │ Contract│              │  plain_response       │                  │
+│     └────┬────┘              └───────────────────────┘                  │
+│          │                              │                                │
+│          ▼                              │                                │
+│  2. Return Attestation                  │                                │
+│     ┌───────────────────────────────────┤                                │
+│     │  attestation_data                 │                                │
+│     │  ├─ public_data                   │                                │
+│     │  │   ├─ attestation (JSON)        │                                │
+│     │  │   └─ signature                 │                                │
+│     │  └─ private_data                  │                                │
+│     │      └─ content / random          │                                │
+│     └───────────────────────────────────┤                                │
+│                                        │                                │
+└────────────────────────────────────────┼────────────────────────────────┘
+                                         │
+                                         │ 4. Send to zkVM
+                                         │    Input: {
+                                         │      attestation_data,
+                                         │      plain_response
+                                         │    }
+                                         ▼
+                    ┌────────────────────────────────────────────────┐
+                    │     Verification Program (TEE + zkVM)          │
+                    │                                                │
+                    │  ┌──────────────────────────────────────────┐  │
+                    │  │  Primus zkTLS Verification Program       │  │
+                    │  │  1. Verify attestation signature         │  │
+                    │  │  2. Validate URL & response integrity    │  │
+                    │  │  3. Extract JSON fields                  │  │
+                    │  └──────────────────────────────────────────┘  │
+                    │                        │                       │
+                    │                        ▼                       │
+                    │  ┌──────────────────────────────────────────┐  │
+                    │  │  Business Logic Program                  │  │
+                    │  │  4. Execute custom verification          │  │
+                    │  │  5. Emit result / generate proof         │  │
+                    │  └──────────────────────────────────────────┘  │
+                    │                                                │
+                    └────────────────────────────────────────────────┘
+                                         │
+                                         │ 5. Return Proof
+                                         ▼
+                    ┌────────────────────────────────────────────────┐
+                    │         On-Chain Verifier / Dapp               │
+                    └────────────────────────────────────────────────┘
 ```
+
+**Key Points:**
+- **Attestor → Dapp**: Returns `attestation_data` (public + private)
+- **Dapp → zkVM**: Sends `attestation_data + plain_response` as combined input
+- **zkVM**: Verifies attestation integrity + executes business logic
+- **No direct Attestor → zkVM connection**: All data flows through Dapp
 
 ## 📁 Project Structure
 
