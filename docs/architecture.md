@@ -84,29 +84,40 @@ interface AttestationData {
                                    │
                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ Step 3: Dapp Extracts Plain Response (Local)                            │
-│ - Uses Primus SDK to decode attestation_data.private_data               │
-│ - Extracts plain_response without sending back to network               │
-│ - Prepares combined input for zkVM                                      │
+│ Step 3: Dapp Prepares attestation_data for zkVM                         │
+│ - public_data: hash/commitment, signature, attestation metadata         │
+│ - private_data: raw_data (plain_response), random (if commitment-based) │
+│ - No separate "plain_response" - it's part of private_data              │
 └─────────────────────────────────────────────────────────────────────────┘
                                    │
                                    │ Input to zkVM:
-                                   │ {
-                                   │   attestation_data,
-                                   │   plain_response,
-                                   │   allowed_urls
+                                   │ attestation_data {
+                                   │   public_data: {
+                                   │     hash / commitment,
+                                   │     signature,
+                                   │     attestation (JSON metadata)
+                                   │   },
+                                   │   private_data: {
+                                   │     raw_data (plain_response),
+                                   │     random (if commitment-based)
+                                   │   }
                                    │ }
                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ Step 4: zkVM Verification Program (Inside TEE)                          │
+│ Input: attestation_data { public_data + private_data }                  │
+│                                                                         │
 │ ┌─────────────────────────────────────────────────────────────────────┐ │
 │ │ 4a. Primus zkTLS Verification                                       │ │
 │ │     - Verify EIP712 signature (ECDSA secp256k1)                     │ │
+│ │       • Input: public_data.signature, public_data.hash              │ │
 │ │     - Verify request_url matches one of allowed_urls                │ │
 │ │     - Verify response integrity:                                    │ │
 │ │       • Commitment-based: coms[i] == msgs_chunks[i]*G + rnds[i]*H   │ │
+│ │         - Input: public_data.commitment, private_data.random        │ │
 │ │       • Hash-based: data_hashes[i] == sha256(response_content[i])   │ │
-│ │     - Extract JSON fields from response                             │ │
+│ │         - Input: public_data.hash, private_data.raw_data            │ │
+│ │     - Extract JSON fields from private_data.raw_data                │ │
 │ └─────────────────────────────────────────────────────────────────────┘ │
 │                                    │                                    │
 │                                    ▼                                    │
@@ -133,10 +144,14 @@ interface AttestationData {
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Important:** The zkVM receives **attestation_data + plain_response** as input from the Dapp, **NOT** directly from the Attestor. This ensures:
+**Important:** The zkVM receives **attestation_data** as input from the Dapp, **NOT** directly from the Attestor. The attestation_data contains:
+- **public_data**: hash/commitment, signature, attestation metadata
+- **private_data**: raw_data (plain_response), random (if commitment-based)
+
+This ensures:
 1. Dapp maintains control over data flow
 2. Attestor only interacts with Dapp (not zkVM)
-3. zkVM can independently verify attestation integrity
+3. zkVM can independently verify attestation integrity using both public and private data
 
 ## Attestation Types
 
