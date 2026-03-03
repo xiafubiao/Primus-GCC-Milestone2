@@ -1,0 +1,269 @@
+# Architecture Overview
+
+## System Design
+
+This document describes the architecture of the zkTLS × zkVM integration system for Primus Network GCC Milestone 2.
+
+## Core Components
+
+### 1. zkTLS-zkVM Connection Module
+
+The bridge between zkTLS attestations and zkVM proof systems.
+
+**Responsibilities:**
+- Parse EIP712 attestation data
+- Extract and validate attestation fields
+- Convert attestation data to zkVM-friendly format
+- Generate verification inputs for zkVM circuits
+
+**Key Files:**
+- `src/core/attestation_verifier.ts` - Main verification logic
+- `src/core/data_extractor.ts` - Extract plain response from attestation
+- `src/core/proof_bridge.ts` - Bridge attestation data to zkVM proofs
+
+### 2. Attestation Data Structure
+
+```typescript
+interface AttestationData {
+  attestor: string;           // Attestor's address
+  taskId: string;             // Task identifier
+  attestation: {
+    recipient: string;        // User's wallet address
+    request: {
+      url: string;            // Request URL
+      header: Record<string, string>;
+      method: string;         // HTTP method
+      body: string;           // Request body
+    };
+    responseResolve: {
+      keyName: string;        // Verification data item name
+      parseType: string;      // JSON | XPath | etc.
+      parsePath: string;      // Path to data item
+    }[];
+    data: Record<string, any>; // Actual data items (stringified JSON)
+    attConditions: string;     // Response conditions (stringified JSON)
+    timestamp: number;         // Verification execution timestamp
+    additionParams: string;    // Additional parameters from zkTLS SDK
+  };
+  signature: {
+    v: number;
+    r: string;
+    s: string;
+  };
+  txHash?: string;            // Transaction hash (optional)
+}
+```
+
+### 3. Verification Flow
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Step 1: Receive Attestation                                  │
+│ - Input: EIP712 signed attestation from Primus Network       │
+│ - Output: Parsed attestation object                          │
+└──────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Step 2: Verify Signature                                     │
+│ - Verify EIP712 signature (v, r, s)                          │
+│ - Verify attestor address matches task assignment            │
+│ - Verify schema and chain ID                                 │
+└──────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Step 3: Extract Plain Response                               │
+│ - Decode `data` field from hex to JSON                       │
+│ - Extract request/response information                       │
+│ - Parse responseResolve paths                                │
+└──────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Step 4: Prepare zkVM Inputs                                  │
+│ - Convert data to zkVM-friendly format                       │
+│ - Generate commitments or hashes based on attestation type   │
+│ - Prepare public inputs for circuit                          │
+└──────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Step 5: Execute zkVM Verification                            │
+│ - Load appropriate zkVM adapter (Aztec/Succinct/Brevis)      │
+│ - Execute verification circuit                               │
+│ - Generate proof or verification result                      │
+└──────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Step 6: Return Proof                                         │
+│ - Return zkVM proof to caller                                │
+│ - Include verification metadata                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+## Attestation Types
+
+### Commitment-based (Grumpkin Curve)
+
+**Use Case:** Large datasets, batch verification
+
+**Structure:**
+```typescript
+interface CommitmentAttestation {
+  publicKeyX: Uint8Array;
+  publicKeyY: Uint8Array;
+  hash: Uint8Array;
+  signature: Uint8Array;
+  requestUrls: BoundedVec[];
+  allowedUrls: BoundedVec[];
+  commitments: EmbeddedCurvePoint[];  // coms[i]
+  randomScalars: Field[];              // rnds[i]
+  msgsChunks: Field[];                 // msgs_chunks[i]
+  msgs: Uint8Array[];
+  H: EmbeddedCurvePoint;               // Fixed per business case
+  id: Field;
+}
+```
+
+**Verification Equation:**
+```
+coms[i] == msgs_chunks[i] * G + rnds[i] * H
+```
+
+Where:
+- `G` is the fixed generator point
+- `H` is the fixed point per business case
+- `coms[i]` are the commitments
+- `msgs_chunks[i]` are message chunks
+- `rnds[i]` are random scalars
+
+### Hashing-based (SHA256)
+
+**Use Case:** Small datasets, simpler circuits
+
+**Structure:**
+```typescript
+interface HashAttestation {
+  publicKeyX: Uint8Array;
+  publicKeyY: Uint8Array;
+  hash: Uint8Array;
+  signature: Uint8Array;
+  requestUrls: BoundedVec[];
+  allowedUrls: BoundedVec[];
+  dataHashes: Uint8Array[];  // sha256(plain_json_response_contents[i])
+  msgs: Uint8Array[];
+  id: Field;
+}
+```
+
+**Verification:**
+```
+data_hashes[i] == sha256(plain_json_response_contents[i])
+```
+
+## zkVM Platform Integration
+
+### Aztec Noir
+
+**Adapter Location:** `src/platforms/aztec/`
+
+**Components:**
+- `noir_verifier.nr` - Noir verification circuit
+- `parser.ts` - TypeScript parser for attestation JSON
+- `contract_template.nr` - Aztec smart contract template
+
+**Key Functions:**
+- `verify_attestation_comm()` - Commitment-based verification
+- `verify_attestation_hashing()` - Hash-based verification
+
+**Workflow:**
+1. Parse attestation JSON using `att_verifier_parsing`
+2. Deploy Aztec contract using `aztec-attestation-sdk`
+3. Call `verify_comm()` or `verify_hash()` with parsed inputs
+4. Wait for public event emission (confirms full verification)
+
+### Succinct SP1
+
+**Adapter Location:** `src/platforms/succinct/`
+
+**Components:**
+- `sp1_verifier.rs` - Rust verification program for SP1
+- Integration with SP1 zkVM runtime
+
+**Features:**
+- High-throughput verification
+- Optimized for batch processing
+- Native Rust implementation
+
+### Brevis Pico
+
+**Adapter Location:** `src/platforms/brevis/`
+
+**Components:**
+- `pico_verifier.rs` - Lightweight verification for Pico zkVM
+
+**Features:**
+- Minimal proof size
+- Mobile/edge deployment optimized
+- Fast verification time
+
+## Performance Considerations
+
+### Circuit Size Optimization
+
+**Target Constraints:**
+- Small cases: < 350k constraints
+- Medium cases: < 500k constraints
+- Large cases: < 800k constraints
+
+**Optimization Techniques:**
+1. Batch commitment verification
+2. Efficient SHA256 implementation
+3. Grumpkin curve optimization
+4. Constraint reduction in URL matching
+
+### Latency Targets
+
+**End-to-End (including blockchain):**
+- Local sandbox: < 40s
+- Devnet: < 45s
+- Mainnet: < 60s (depends on block time)
+
+**Proving Time Only:**
+- Small circuits: < 10s
+- Medium circuits: < 20s
+- Large circuits: < 30s
+
+## Security Considerations
+
+### TEE (Trusted Execution Environment)
+
+The Verification Program runs inside a TEE to ensure:
+- Attestation signature verification is tamper-proof
+- Plain response extraction is secure
+- Business logic execution is isolated
+
+### Cryptographic Guarantees
+
+1. **Signature Verification**: EIP712 signature must be valid
+2. **URL Matching**: Request URL must match one of allowed URLs
+3. **Data Integrity**: Commitments/hashes must match actual data
+4. **Freshness**: Timestamp must be within acceptable range
+
+## Next Steps
+
+1. Implement core attestation verifier (`src/core/attestation_verifier.ts`)
+2. Complete Aztec Noir adapter (priority: high)
+3. Develop Succinct SP1 adapter (priority: medium)
+4. Create Brevis Pico adapter (priority: medium)
+5. Add comprehensive tests and benchmarks
+6. Optimize circuit performance
+
+## References
+
+- [DVC Workflow](https://github.com/primus-labs/DVC-Intro)
+- [zkTLS Verification Noir](https://github.com/primus-labs/zktls-verification-noir)
+- [Aztec Network Docs](https://docs.aztec.network)
+- [EAS Standard](https://easscan.org)
