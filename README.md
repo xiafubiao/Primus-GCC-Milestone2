@@ -49,16 +49,9 @@ zkTLS × zkVM Integration - Primus Network GCC Milestone 2 Implementation
 └────────────────────────────────────────┼────────────────────────────────┘
                                          │
                                          │ 4. Send to zkVM
-                                         │    Input: attestation_data {
-                                         │      public_data: {
-                                         │        hash / commitment,
-                                         │        signature,
-                                         │        attestation (JSON)
-                                         │      },
-                                         │      private_data: {
-                                         │        raw_data (plain_response),
-                                         │        random (if commitment-based)
-                                         │      }
+                                         │    attestation data: {
+                                         │      public_data (hash/commitment),
+                                         │      private_data (raw data)
                                          │    }
                                          ▼
                     ┌────────────────────────────────────────────────┐

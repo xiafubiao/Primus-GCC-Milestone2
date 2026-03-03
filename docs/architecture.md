@@ -90,18 +90,11 @@ interface AttestationData {
 │ - No separate "plain_response" - it's part of private_data              │
 └─────────────────────────────────────────────────────────────────────────┘
                                    │
-                                   │ Input to zkVM:
-                                   │ attestation_data {
-                                   │   public_data: {
-                                   │     hash / commitment,
-                                   │     signature,
-                                   │     attestation (JSON metadata)
-                                   │   },
-                                   │   private_data: {
-                                   │     raw_data (plain_response),
-                                   │     random (if commitment-based)
-                                   │   }
-                                   │ }
+                                   │ 4. Send to zkVM
+                                   │    attestation data: {
+                                   │      public_data (hash/commitment),
+                                   │      private_data (raw data)
+                                   │    }
                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ Step 4: zkVM Verification Program (Inside TEE)                          │
