@@ -58,15 +58,10 @@ zkTLS × zkVM Integration - Primus Network GCC Milestone 2 Implementation
                     │     Verification Program (TEE + zkVM)          │
                     │                                                │
                     │  ┌──────────────────────────────────────────┐  │
-                    │  │  Primus zkTLS Verification Program       │  │
+                    │  │  Verification & Business Logic Program   │  │
                     │  │  1. Verify attestation signature         │  │
                     │  │  2. Validate URL & response integrity    │  │
                     │  │  3. Extract JSON fields                  │  │
-                    │  └──────────────────────────────────────────┘  │
-                    │                        │                       │
-                    │                        ▼                       │
-                    │  ┌──────────────────────────────────────────┐  │
-                    │  │  Business Logic Program                  │  │
                     │  │  4. Execute custom verification          │  │
                     │  │  5. Emit result / generate proof         │  │
                     │  └──────────────────────────────────────────┘  │

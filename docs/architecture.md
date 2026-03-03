@@ -98,27 +98,18 @@ interface AttestationData {
                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ Step 4: zkVM Verification Program (Inside TEE)                          │
-│ Input: attestation_data { public_data + private_data }                  │
+│ Input: attestation data { public_data (hash/commitment), private_data (raw data) }
 │                                                                         │
 │ ┌─────────────────────────────────────────────────────────────────────┐ │
-│ │ 4a. Primus zkTLS Verification                                       │ │
-│ │     - Verify EIP712 signature (ECDSA secp256k1)                     │ │
-│ │       • Input: public_data.signature, public_data.hash              │ │
-│ │     - Verify request_url matches one of allowed_urls                │ │
-│ │     - Verify response integrity:                                    │ │
-│ │       • Commitment-based: coms[i] == msgs_chunks[i]*G + rnds[i]*H   │ │
-│ │         - Input: public_data.commitment, private_data.random        │ │
-│ │       • Hash-based: data_hashes[i] == sha256(response_content[i])   │ │
-│ │         - Input: public_data.hash, private_data.raw_data            │ │
-│ │     - Extract JSON fields from private_data.raw_data                │ │
-│ └─────────────────────────────────────────────────────────────────────┘ │
-│                                    │                                    │
-│                                    ▼                                    │
-│ ┌─────────────────────────────────────────────────────────────────────┐ │
-│ │ 4b. Business Logic Program                                          │ │
-│ │     - Execute custom verification logic on extracted data           │ │
-│ │     - Example: Verify balance > 1000, status == "active", etc.      │ │
-│ │     - Generate proof / emit verification result                     │ │
+│ │  Verification & Business Logic Program                              │ │
+│ │  - Verify EIP712 signature (ECDSA secp256k1)                        │ │
+│ │  - Verify request_url matches one of allowed_urls                   │ │
+│ │  - Verify response integrity:                                       │ │
+│ │    • Commitment-based: coms[i] == msgs_chunks[i]*G + rnds[i]*H      │ │
+│ │    • Hash-based: data_hashes[i] == sha256(response_content[i])      │ │
+│ │  - Extract JSON fields from private_data                            │ │
+│ │  - Execute custom verification logic                                │ │
+│ │  - Generate proof / emit verification result                        │ │
 │ └─────────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────────┘
                                    │
