@@ -79,8 +79,7 @@ zkTLS × zkVM Integration - Primus Network GCC Milestone 2 Implementation
 - **Attestor → Dapp**: Returns `attestation_data` (public + private)
 - **Dapp → zkVM**: Sends `attestation_data` to the zkVM program
 - **zkVM**: Verifies attestation integrity + executes business logic
-- **zkVM**: Verifies attestation integrity + executes business logic
-- **No direct Attestor → zkVM connection**: All data flows through Dapp
+
 
 ## 📁 Project Structure
 
